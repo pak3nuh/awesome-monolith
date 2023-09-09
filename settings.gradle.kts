@@ -9,4 +9,7 @@
  */
 
 rootProject.name = "awesome-monolith"
-include("app", "list", "utilities")
+include("core")
+include("user-service-api")
+include("user-service-local")
+include("user-service-remote")

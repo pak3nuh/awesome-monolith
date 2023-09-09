@@ -30,8 +30,8 @@ migrate to Microservice based environment.
 - The repository is still split into modules (gradle in this case)
 - The core modules will contain all the infrastructure needed to bootstrap and handle service lifecycle 
 and communication
-- Each service needs to be completely independent and provide 2 implementation. One for local usage and 
-another for remote proxies
+- Each service needs to be completely independent and provide 2 implementations in separate modules. One for local usage
+and another for remote proxies. Usage is defined by configuration.
 - Each service will have a factory which provides a manifest with dependencies it needs to run
 
 ## Stages
