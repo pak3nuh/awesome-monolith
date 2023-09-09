@@ -41,3 +41,31 @@ another for remote proxies
 - Deploy a single unit with all services
 - Deploy multiple units with services split between them
 - Decommission one of the services locally and keep only the proxy (breaking the monolith)
+
+## Domain
+
+At this point, any domain is good enough as long as I can separate it into at least 5 modules, excluding
+core. So it is just another online shopping app.
+
+A rough idea of what It would be able to do
+
+* Register
+* Browse categories
+* Comment products
+* Shopping cart
+* Search
+
+And which modules will be needed
+
+* User management
+* Category management
+* Product management
+* Checkout
+* Payment
+* Search
+* Core
+
+### User interface
+
+For user interaction I'll probably use something like Flutter or Compose for web, since it provides a lot of
+functionality and exports everything to JS/WASM.
