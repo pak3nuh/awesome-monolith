@@ -7,8 +7,8 @@ import io.github.pak3nuh.monolith.service.api.ApiClientService
 import kotlin.reflect.KClass
 
 class RemoteUserServiceFactory: UserServiceFactory {
-    override val serviceType: KClass<UserService>
-        get() = UserService::class
+    override val locality = ServiceLocality.REMOTE
+    override val serviceType: KClass<UserService> = UserService::class
     override val dependencies: Sequence<DependencyDeclaration<out Service>>
         get() = sequenceOf(apiClientDependency)
 

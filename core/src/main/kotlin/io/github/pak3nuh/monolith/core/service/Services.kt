@@ -12,7 +12,6 @@ interface Service: AutoCloseable
  * No args
  * Singleton
  */
-
 interface ServiceFactory<T: Service> {
 
     val serviceType: KClass<T>

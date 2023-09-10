@@ -5,10 +5,38 @@ import kotlin.reflect.KClass
 
 object ServiceDiscovery {
 
-    fun getAllServiceFactories(config: List<ServiceConfiguration>): Sequence<ServiceFactory<*>> {
-        val factoriesLoaded: ServiceLoader<ServiceFactory<*>> = ServiceLoader.load(ServiceFactory::class.java)
-        return factoriesLoaded.asSequence()
-            .filter { it.locality == config }
+    fun loadServices(): LoadedServices {
+        val factoryLoader: ServiceLoader<ServiceFactory<*>> = ServiceLoader.load(ServiceFactory::class.java)
+        val factories: Sequence<ServiceFactory<*>> = factoryLoader.asSequence()
+        val config = mergeConfiguration(getDefaultConfiguration(), getUserConfiguration())
+        val filteredLocality = filerLocality(config, factories)
+        val services = loadServices(filteredLocality)
+        return LoadedServices(services)
+    }
+
+    fun getDefaultConfiguration(): Sequence<ServiceBootstrapConfiguration> {
+        TODO()
+    }
+
+    fun getUserConfiguration(): Sequence<ServiceBootstrapConfiguration> {
+        TODO()
+    }
+
+    fun mergeConfiguration(
+        config: Sequence<ServiceBootstrapConfiguration>, 
+        overrides: Sequence<ServiceBootstrapConfiguration>
+    ): Sequence<ServiceBootstrapConfiguration> {
+        TODO()    
+    }
+
+    fun filerLocality(config: Sequence<ServiceBootstrapConfiguration>, factories: Sequence<ServiceFactory<*>>): Sequence<ServiceFactory<*>> {
+        val serviceMap = config.associateBy { it.type }
+        return factories
+            .filter { it: ServiceFactory<*> ->
+                val factoryType = it::class
+                val serviceConfig = requireNotNull(serviceMap[factoryType]) { "There is no configuration for factory $factoryType" }
+                serviceConfig.locality == it.locality
+             }
     }
 
     fun loadServices(factories: Sequence<ServiceFactory<*>>): Map<KClass<out Service>, Service> {
@@ -26,9 +54,10 @@ object ServiceDiscovery {
     }
 
     private fun getDependencies(
-        loadedServices: MutableMap<KClass<out Service>, Service>,
+        loadedServices: Map<KClass<out Service>, Service>,
         dependencies: Sequence<DependencyDeclaration<*>>
     ): ServiceDependencies {
+        //todo check inter dependencies
         val dependencyList = dependencies.fold(mutableListOf<DependencyInstance>()) { list, item ->
             val depType = item.type
             val service = requireNotNull(loadedServices[depType]) { "Dependency of type $depType not found" }
@@ -46,7 +75,9 @@ object ServiceDiscovery {
 
 }
 
-data class ServiceConfiguration(val type: KClass<out ServiceFactory<*>>, val locality: ServiceLocality)
+data class ServiceBootstrapConfiguration(val type: KClass<out ServiceFactory<*>>, val locality: ServiceLocality)
+
+data class LoadedServices(private val serviceMap: Map<KClass<out Service>, Service>)
 
 enum class ServiceLocality {
     LOCAL, REMOTE
