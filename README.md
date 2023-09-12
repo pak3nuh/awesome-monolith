@@ -69,3 +69,8 @@ And which modules will be needed
 
 For user interaction I'll probably use something like Flutter or Compose for web, since it provides a lot of
 functionality and exports everything to JS/WASM.
+
+## TODO
+
+- Provide a way to expose REST endpoints for local services
+- Transform configuration nodes into config DTO

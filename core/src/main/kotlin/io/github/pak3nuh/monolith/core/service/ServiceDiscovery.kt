@@ -1,83 +1,115 @@
 package io.github.pak3nuh.monolith.core.service
 
+import io.github.pak3nuh.monolith.service.config.ConfigurationService
+import io.github.pak3nuh.monolith.service.config.NodeBasedConfigService
+import java.nio.file.Paths
 import java.util.*
 import kotlin.reflect.KClass
 
 object ServiceDiscovery {
 
-    fun loadServices(): LoadedServices {
+    fun boostrapServices(): LoadedServices {
         val factoryLoader: ServiceLoader<ServiceFactory<*>> = ServiceLoader.load(ServiceFactory::class.java)
         val factories: Sequence<ServiceFactory<*>> = factoryLoader.asSequence()
-        val config = mergeConfiguration(getDefaultConfiguration(), getUserConfiguration())
-        val filteredLocality = filerLocality(config, factories)
-        val services = loadServices(filteredLocality)
+        val configService = createConfigService()
+        val config = mergeConfiguration(
+            getDefaultConfiguration(factories),
+            getUserConfiguration(configService)
+        )
+        val filtered = filter(config, factories)
+        val services = loadServices(filtered, configService)
         return LoadedServices(services)
     }
 
-    fun getDefaultConfiguration(): Sequence<ServiceBootstrapConfiguration> {
-        TODO()
+    internal fun createConfigService(): ConfigurationService {
+        val cfgPath = System.getenv("MONOLITH_CONFIG_FILE_PATH") ?: "config.properties"
+        return NodeBasedConfigService.create(Paths.get(cfgPath))
     }
 
-    fun getUserConfiguration(): Sequence<ServiceBootstrapConfiguration> {
-        TODO()
+    internal fun getDefaultConfiguration(factories: Sequence<ServiceFactory<*>>): Sequence<ServiceBootstrapConfiguration> {
+        return factories.map { ServiceBootstrapConfiguration(it::class, ServiceLocality.LOCAL, true) }
     }
 
-    fun mergeConfiguration(
+    internal fun getUserConfiguration(configService: ConfigurationService): Sequence<ServiceBootstrapConfiguration> {
+        return configService.node("bootstrap")
+            .list("services")
+            .map {
+                ServiceBootstrapConfiguration(
+                    Class.forName(requireNotNull(it.value("factory"))).kotlin as KClass<out ServiceFactory<*>>,
+                    ServiceLocality.valueOf(it.value("locality") ?: "LOCAL"),
+                    it.value("enabled")?.toBoolean() ?: true
+                )
+            }.asSequence()
+    }
+
+    internal fun mergeConfiguration(
         config: Sequence<ServiceBootstrapConfiguration>, 
         overrides: Sequence<ServiceBootstrapConfiguration>
     ): Sequence<ServiceBootstrapConfiguration> {
-        TODO()    
+        val finalConfig = mutableListOf<ServiceBootstrapConfiguration>()
+        finalConfig.addAll(config.filter { !overrides.contains(it) })
+        finalConfig.addAll(overrides)
+        return finalConfig.asSequence()
     }
 
-    fun filerLocality(config: Sequence<ServiceBootstrapConfiguration>, factories: Sequence<ServiceFactory<*>>): Sequence<ServiceFactory<*>> {
+    internal fun filter(config: Sequence<ServiceBootstrapConfiguration>, factories: Sequence<ServiceFactory<*>>): Sequence<ServiceFactory<*>> {
         val serviceMap = config.associateBy { it.type }
         return factories
-            .filter { it: ServiceFactory<*> ->
+            .map {
                 val factoryType = it::class
                 val serviceConfig = requireNotNull(serviceMap[factoryType]) { "There is no configuration for factory $factoryType" }
-                serviceConfig.locality == it.locality
-             }
+                Pair(serviceConfig, it)
+            }
+            .filter { it.first.enabled }
+            .filter { it.first.locality == it.second.locality }
+            .map { it.second }
     }
 
-    fun loadServices(factories: Sequence<ServiceFactory<*>>): Map<KClass<out Service>, Service> {
-        val loadedServices = mutableMapOf<KClass<out Service>, Service>()
+    internal fun loadServices(factories: Sequence<ServiceFactory<*>>, configService: ConfigurationService): Map<KClass<out Service>, ServiceCreation> {
+        val loadedServices = mutableMapOf<KClass<out Service>, ServiceCreation>()
+        loadedServices[configService::class] = SingletonService(configService)
         factories.sortedBy { it.dependencies.count() }
-            .onEach { checkExportedTypes(it.serviceType, it.exportedTypes()) }
             .forEach { factory ->
-                val dependencies: ServiceDependencies = getDependencies(loadedServices, factory.dependencies)
+                val serviceType = factory.serviceType
+                require(!loadedServices.containsKey(serviceType)) { "Service $serviceType already loaded" }
+                val dependencies = getDependencies(loadedServices, factory.dependencies)
                 val serviceInstance = factory.create(dependencies)
-                factory.exportedTypes()
-                    .onEach { require(!loadedServices.containsKey(it)) { "Service $it already loaded" } }
-                    .forEach { loadedServices[it] = serviceInstance }
+                loadedServices[serviceType] = SingletonService(serviceInstance)
             }
         return loadedServices
     }
 
-    private fun getDependencies(
-        loadedServices: Map<KClass<out Service>, Service>,
+    internal fun getDependencies(
+        loadedServices: Map<KClass<out Service>, ServiceCreation>,
         dependencies: Sequence<DependencyDeclaration<*>>
     ): ServiceDependencies {
-        //todo check inter dependencies
         val dependencyList = dependencies.fold(mutableListOf<DependencyInstance>()) { list, item ->
             val depType = item.type
-            val service = requireNotNull(loadedServices[depType]) { "Dependency of type $depType not found" }
-            list.add(DependencyInstance(item.alias) { service })
+            val dependency = requireNotNull(loadedServices[depType]) { "Dependency of type $depType not found. Check for missing factories or cyclic dependencies." }
+            list.add(DependencyInstance(item.alias, dependency))
             list
         }
         return ServiceDependencies(dependencyList.asSequence())
     }
 
-    private fun checkExportedTypes(serviceType: KClass<out Service>, exportedTypes: Sequence<KClass<out Service>>) {
-        require(exportedTypes.count() > 0) { "Service $serviceType must export at least one type" }
-        exportedTypes
-            .forEach { require(it.java.isAssignableFrom(it.java)) { "Exported type $it is not assignable from $serviceType" } }
+}
+
+internal typealias ServiceCreation = () -> Service
+
+class SingletonService(private val service: Service): ServiceCreation {
+    override fun invoke(): Service {
+        return service
     }
 
 }
 
-data class ServiceBootstrapConfiguration(val type: KClass<out ServiceFactory<*>>, val locality: ServiceLocality)
+data class ServiceBootstrapConfiguration(
+    val type: KClass<out ServiceFactory<*>>,
+    val locality: ServiceLocality,
+    val enabled: Boolean
+)
 
-data class LoadedServices(private val serviceMap: Map<KClass<out Service>, Service>)
+data class LoadedServices(private val serviceMap: Map<KClass<out Service>, ServiceCreation>)
 
 enum class ServiceLocality {
     LOCAL, REMOTE

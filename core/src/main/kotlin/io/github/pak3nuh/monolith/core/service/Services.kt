@@ -20,14 +20,12 @@ interface ServiceFactory<T: Service> {
 
     val dependencies: Sequence<DependencyDeclaration<out Service>>
 
-    fun exportedTypes(): Sequence<KClass<out Service>> = sequenceOf(serviceType)
-
     fun create(dependencies: ServiceDependencies): T
 }
 
 data class DependencyDeclaration<T: Service>(val type: KClass<T>, val alias: String)
 
-data class ServiceDependencies(private val dependencies: Sequence<DependencyInstance>) {
+class ServiceDependencies(private val dependencies: Sequence<DependencyInstance>) {
     fun <T: Service> getService(declaration: DependencyDeclaration<T>): T {
         return dependencies.filter { it.alias == declaration.alias }
             .map { declaration.type.cast(it.dependency) }
@@ -36,4 +34,3 @@ data class ServiceDependencies(private val dependencies: Sequence<DependencyInst
 }
 
 data class DependencyInstance(val alias: String, val dependency: () -> Service)
-
