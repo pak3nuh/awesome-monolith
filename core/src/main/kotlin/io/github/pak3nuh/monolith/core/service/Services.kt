@@ -26,7 +26,7 @@ interface ServiceFactory<T: Service> {
 data class DependencyDeclaration<T: Service>(val type: KClass<T>, val alias: String)
 
 class ServiceDependencies(private val dependencies: Sequence<DependencyInstance>) {
-    fun <T: Service> getService(declaration: DependencyDeclaration<T>): T {
+    fun <T: Service> getDependency(declaration: DependencyDeclaration<T>): T {
         return dependencies.filter { it.alias == declaration.alias }
             .map { declaration.type.cast(it.dependency) }
             .first()
@@ -34,3 +34,7 @@ class ServiceDependencies(private val dependencies: Sequence<DependencyInstance>
 }
 
 data class DependencyInstance(val alias: String, val dependency: () -> Service)
+
+enum class ServiceLocality {
+    LOCAL, REMOTE
+}

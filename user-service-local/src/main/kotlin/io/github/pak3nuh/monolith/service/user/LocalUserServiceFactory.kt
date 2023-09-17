@@ -15,7 +15,7 @@ class LocalUserServiceFactory: UserServiceFactory {
     override val dependencies: Sequence<DependencyDeclaration<out Service>> = sequenceOf(cfgDep)
 
     override fun create(dependencies: ServiceDependencies): UserService {
-        val cfg = dependencies.getService(cfgDep)
+        val cfg = dependencies.getDependency(cfgDep)
         val dbUrl = checkNotNull(cfg.node("services", "user", "storage")?.value("url")) { "DB url is required" }
         return LocalUserService(dbUrl)
     }

@@ -8,9 +8,11 @@ import kotlin.reflect.KClass
 
 object ServiceDiscovery {
 
+    const val CFG_FILE_PROP = "monolith.bootstrap.configfile.path"
+    const val CFG_FILE_ENV = "MONOLITH_BOOTSTRAP_CONFIGFILE_PATH"
+
     fun boostrapServices(): LoadedServices {
-        val factoryLoader: ServiceLoader<ServiceFactory<*>> = ServiceLoader.load(ServiceFactory::class.java)
-        val factories: Sequence<ServiceFactory<*>> = factoryLoader.asSequence()
+        val factories = getServiceFactories()
         val configService = createConfigService()
         val config = mergeConfiguration(
             getDefaultConfiguration(factories),
@@ -21,8 +23,15 @@ object ServiceDiscovery {
         return LoadedServices(services)
     }
 
+    internal fun getServiceFactories(): Sequence<ServiceFactory<*>> {
+        val factoryLoader: ServiceLoader<ServiceFactory<*>> = ServiceLoader.load(ServiceFactory::class.java)
+        return factoryLoader.asSequence()
+    }
+
     internal fun createConfigService(): ConfigurationService {
-        val cfgPath = System.getenv("MONOLITH_CONFIG_FILE_PATH") ?: "config.properties"
+        val cfgPath = System.getenv(CFG_FILE_ENV)
+            ?: System.getProperty(CFG_FILE_PROP)
+            ?: "config.properties"
         return NodeBasedConfigService.create(Paths.get(cfgPath))
     }
 
@@ -32,12 +41,14 @@ object ServiceDiscovery {
 
     internal fun getUserConfiguration(configService: ConfigurationService): Sequence<ServiceBootstrapConfiguration> {
         return configService.node("bootstrap")
-            .list("services")
+            .map("services")
+            .values
             .map {
+                val factoryTypeName = requireNotNull(it.value("factory"))
                 ServiceBootstrapConfiguration(
-                    Class.forName(requireNotNull(it.value("factory"))).kotlin as KClass<out ServiceFactory<*>>,
-                    ServiceLocality.valueOf(it.value("locality") ?: "LOCAL"),
-                    it.value("enabled")?.toBoolean() ?: true
+                    Class.forName(factoryTypeName).kotlin as KClass<out ServiceFactory<*>>,
+                    ServiceLocality.valueOf(it.value("locality", "LOCAL")),
+                    it.value("enabled", "true").toBoolean()
                 )
             }.asSequence()
     }
@@ -67,7 +78,7 @@ object ServiceDiscovery {
 
     internal fun loadServices(factories: Sequence<ServiceFactory<*>>, configService: ConfigurationService): Map<KClass<out Service>, ServiceCreation> {
         val loadedServices = mutableMapOf<KClass<out Service>, ServiceCreation>()
-        loadedServices[configService::class] = SingletonService(configService)
+        loadedServices[ConfigurationService::class] = SingletonService(configService)
         factories.sortedBy { it.dependencies.count() }
             .forEach { factory ->
                 val serviceType = factory.serviceType
@@ -109,8 +120,4 @@ data class ServiceBootstrapConfiguration(
     val enabled: Boolean
 )
 
-data class LoadedServices(private val serviceMap: Map<KClass<out Service>, ServiceCreation>)
-
-enum class ServiceLocality {
-    LOCAL, REMOTE
-}
+data class LoadedServices(val serviceMap: Map<KClass<out Service>, ServiceCreation>)
