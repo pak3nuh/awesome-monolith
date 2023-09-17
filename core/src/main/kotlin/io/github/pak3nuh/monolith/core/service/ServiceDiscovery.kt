@@ -118,6 +118,15 @@ data class ServiceBootstrapConfiguration(
     val type: KClass<out ServiceFactory<*>>,
     val locality: ServiceLocality,
     val enabled: Boolean
-)
+) {
+    override fun equals(other: Any?): Boolean {
+        return other is ServiceBootstrapConfiguration &&
+                other.type == type
+    }
+
+    override fun hashCode(): Int {
+        return type.hashCode()
+    }
+}
 
 data class LoadedServices(val serviceMap: Map<KClass<out Service>, ServiceCreation>)
