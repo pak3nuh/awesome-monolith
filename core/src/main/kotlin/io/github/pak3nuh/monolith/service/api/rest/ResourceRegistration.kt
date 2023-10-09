@@ -1,38 +1,37 @@
 package io.github.pak3nuh.monolith.service.api.rest
 
-import java.io.InputStream
-
-enum class Method {
-    GET, POST, PATCH, PUT
-}
-
-data class ResourceDefinition(
-    val path: String,
-    val methods: Set<Method>,
-    val mimeTypes: Set<String>
-)
-
-data class Request(
-    val path: String,
-    val parameters: Map<String, String>,
-    val body: Body?
-)
-
-data class Body(
-    val mimeType: String,
-    val body: InputStream
-)
-
-data class Response(
-    val status: UInt,
-    val message: String?,
-    val body: Body?
-)
+import io.github.pak3nuh.monolith.core.api.resource.Request
+import io.github.pak3nuh.monolith.core.api.resource.Definition
+import io.github.pak3nuh.monolith.core.api.resource.Response
 
 interface ResourceRegistrar {
-    fun registerResource(resourceDefinition: ResourceDefinition, responseHandler: ResponseHandler)
+    fun registerResource(
+        definition: Definition,
+        interceptors: List<RequestInterceptor>,
+        responseHandler: ResponseHandler
+    )
 }
 
-interface ResponseHandler {
+fun interface ResponseHandler {
     suspend fun handle(request: Request): Response
+}
+
+fun interface RequestInterceptor {
+    suspend fun intercept(request: Request, next: ResponseHandler): Response
+}
+
+/**
+ * Merges the list of interceptors with the response handler into a single handler chaining calls together.
+ */
+internal fun requestChain(interceptors: List<RequestInterceptor>, handler: ResponseHandler): ResponseHandler {
+    return if (interceptors.isEmpty()) {
+        handler
+    } else {
+        val reduced = interceptors.reduce { firstInt, secondInt ->
+            RequestInterceptor { req, nextHandler ->
+                firstInt.intercept(req) { secondInt.intercept(it, nextHandler) }
+            }
+        }
+        ResponseHandler { request -> reduced.intercept(request, handler) }
+    }
 }
